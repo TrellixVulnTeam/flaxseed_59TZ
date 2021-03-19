@@ -2,5 +2,6 @@ __pycache__
 .vscode
 .python-version
 build/
+data/
 dist/
 *.egg-info

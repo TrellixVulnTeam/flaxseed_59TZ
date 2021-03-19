@@ -193,12 +193,18 @@ class FlaxseedModule(nn.Module):
         pass
 
     @property
+    def random_key(self):
+        if not hasattr(self, "_random_key"):
+            self._random_key = random.PRNGKey(0)
+        return self._random_key
+
+    @property
     def optimizer(self):
         if not hasattr(self, "_optimizer"):
             self._optimizer = None
-            
+
         if self._optimizer is None:
-            params = self.init_params(self._random_key)
+            params = self.init_params(self.random_key)
             self._optimizer = self.init_optimizer(params)
         return self._optimizer
 
@@ -213,6 +219,7 @@ class FlaxseedModule(nn.Module):
     @abstractmethod
     def training_step(
         self,
+        params: Dict[str, np.ndarray],
         batch: Sequence[np.ndarray],
         random_key: np.ndarray,
     ) -> Dict[str, np.ndarray]:
@@ -220,6 +227,7 @@ class FlaxseedModule(nn.Module):
 
     def eval_step(
         self,
+        params: Dict[str, np.ndarray],
         batch: Sequence[np.ndarray],
         random_key: np.ndarray,
     ) -> Dict[str, np.ndarray]:
@@ -251,7 +259,7 @@ class FlaxseedModule(nn.Module):
         for i in range(1, max_epochs + 1):
             self.optimizer, self._random_key = _training_epoch(
                 self.optimizer,
-                random_key=self._random_key,
+                random_key=self.random_key,
                 training_step=training_step_,
                 training_loader=training_loader,
                 eval_step=eval_step_,
@@ -261,10 +269,10 @@ class FlaxseedModule(nn.Module):
             )
 
     def test(self, test_loader: Sequence):
-        self.random_key = _test_epoch(
+        self._random_key = _test_epoch(
             self.optimizer.target,
-            random_key=self._random_key,
-            test_step=jax.pmap(self.test_step),
+            random_key=self.random_key,
+            test_step=jax.pmap(self.eval_step),
             test_loader=test_loader,
             desc="Test",
         )
