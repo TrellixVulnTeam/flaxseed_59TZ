@@ -1,11 +1,102 @@
+from abc import abstractmethod
 from functools import partial, wraps
 from typing import Any, Callable, Iterable, Dict, Tuple, Sequence, Union
 
+import flax.linen as nn
 from flax import optim, jax_utils
 import jax
 from jax import random, lax
 from jax import numpy as np
 from tqdm import tqdm
+
+
+class FlaxseedModule(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self._random_key = random.PRNGKey(0)
+        self._optimizer = None
+
+    @abstractmethod
+    def init_params(self, key: np.ndarray) -> Dict[str, np.ndarray]:
+        pass
+
+    @abstractmethod
+    def init_optimizer(self, params: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        pass
+
+    @property
+    def optimizer(self):
+        if self._optimizer is None:
+            params = self.init_params(self._random_key)
+            self._optimizer = self.init_optimizer(params)
+        return self._optimizer
+
+    @optimizer.setter
+    def optimizer(self, value):
+        self._optimizer = value
+
+    @property
+    def params(self):
+        return self.optimizer.target
+
+    @abstractmethod
+    def training_step(
+        self,
+        batch: Sequence[np.ndarray],
+        random_key: np.ndarray,
+    ) -> Dict[str, np.ndarray]:
+        pass
+
+    def eval_step(
+        self,
+        batch: Sequence[np.ndarray],
+        random_key: np.ndarray,
+    ) -> Dict[str, np.ndarray]:
+        pass
+
+    def train(
+        self,
+        training_loader: Sequence,
+        eval_loader: Sequence = (),
+        max_epochs: int = 5,
+        eval_frequency: int = 1,
+    ):
+        @partial(jax.pmap, axis_name="batch")
+        def training_step_(
+            optimizer: optim.Optimizer,
+            batch: Sequence[np.ndarray],
+            random_key: np.ndarray,
+        ) -> Tuple[Dict[str, np.ndarray], optim.Optimizer]:
+            step_fn = _make_step_fn_differentiable(self.training_step)
+            step_fn = partial(step_fn, batch=batch, random_key=random_key)
+            (_, metrics), grad = jax.value_and_grad(step_fn, has_aux=True)(
+                optimizer.target
+            )
+            optimizer = optimizer.apply_gradient(lax.pmean(grad, axis_name="batch"))
+            return metrics, optimizer
+
+        eval_step_ = jax.pmap(self.eval_step)
+
+        for i in range(1, max_epochs + 1):
+            self.optimizer, self._random_key = _training_epoch(
+                self.optimizer,
+                random_key=self._random_key,
+                training_step=training_step_,
+                training_loader=training_loader,
+                eval_step=eval_step_,
+                eval_loader=eval_loader,
+                eval_frequency=eval_frequency,
+                desc=f"Epoch {i}",
+            )
+
+    def test(self, test_loader: Sequence):
+        self.random_key = _test_epoch(
+            self.optimizer.target,
+            random_key=self._random_key,
+            test_step=jax.pmap(self.test_step),
+            test_loader=test_loader,
+            desc="Test",
+        )
 
 
 def _shard(x: Union[np.ndarray, Sequence[np.ndarray]]) -> Sequence[np.ndarray]:
@@ -41,25 +132,25 @@ def _training_epoch(
     random_key: np.ndarray,
     training_step: Callable = lambda *x: None,
     training_loader: Sequence = (),
-    validation_step: Callable = lambda *x: None,
-    validation_loader: Sequence = (),
-    validation_frequency: int = 1,
+    eval_step: Callable = lambda *x: None,
+    eval_loader: Sequence = (),
+    eval_frequency: int = 1,
     progress_bar: bool = True,
     desc: str = "",
 ) -> Tuple[optim.Optimizer, np.ndarray]:
-    total = len(training_loader) + validation_frequency * len(validation_loader)
-    eval_every = len(training_loader) / validation_frequency
+    total = len(training_loader) + eval_frequency * len(eval_loader)
+    eval_every = len(training_loader) / eval_frequency
     get_progress_bar = partial(tqdm, disable=not progress_bar, leave=False)
 
     prog_bar = get_progress_bar(total=total, desc=desc)
     optimizer = optimizer.replicate()
     random_key = random.split(random_key, num=jax.device_count())
 
-    def validation_epoch(eval_loader: Iterable, random_key: np.ndarray) -> np.ndarray:
+    def eval_epoch(eval_loader: Iterable, random_key: np.ndarray) -> np.ndarray:
         loader = get_progress_bar(eval_loader, desc="Valid", position=1)
         for batch in loader:
             random_key, subkey = _parallel_split(random_key)
-            metrics = validation_step(optimizer.target, _shard(batch), subkey)
+            metrics = eval_step(optimizer.target, _shard(batch), subkey)
 
             prog_bar.update()
             if "loss" in metrics:
@@ -77,8 +168,8 @@ def _training_epoch(
             loss = np.mean(metrics["loss"]).item()
             prog_bar.set_postfix_str(f"loss={loss:.4f}", refresh=False)
 
-        if validation_loader and int(i % eval_every) == 0:
-            validation_epoch(validation_loader, random_key=random_key)
+        if eval_loader and int(i % eval_every) == 0:
+            eval_epoch(eval_loader, random_key=random_key)
 
     prog_bar.close()
     optimizer = optimizer.unreplicate()
@@ -124,15 +215,17 @@ def train(
     optimizer: optim.Optimizer,
     training_step: Callable,
     training_loader: Sequence,
-    validation_step: Callable = lambda *x: None,
-    validation_loader: Sequence = (),
+    eval_step: Callable = lambda *x: None,
+    eval_loader: Sequence = (),
     random_key: np.ndarray = random.PRNGKey(0),
     max_epochs: int = 5,
-    validation_frequency: int = 1,
+    eval_frequency: int = 1,
 ):
     @partial(jax.pmap, axis_name="batch")
     def training_step_(
-        optimizer: optim.Optimizer, batch: Sequence[np.ndarray], random_key: np.ndarray,
+        optimizer: optim.Optimizer,
+        batch: Sequence[np.ndarray],
+        random_key: np.ndarray,
     ) -> Tuple[Dict[str, np.ndarray], optim.Optimizer]:
         step_fn = _make_step_fn_differentiable(training_step)
         step_fn = partial(step_fn, batch=batch, random_key=random_key)
@@ -140,7 +233,7 @@ def train(
         optimizer = optimizer.apply_gradient(lax.pmean(grad, axis_name="batch"))
         return metrics, optimizer
 
-    validation_step_ = jax.pmap(validation_step)
+    eval_step_ = jax.pmap(eval_step)
 
     for i in range(1, max_epochs + 1):
         optimizer, random_key = _training_epoch(
@@ -148,9 +241,9 @@ def train(
             random_key=random_key,
             training_step=training_step_,
             training_loader=training_loader,
-            validation_step=validation_step_,
-            validation_loader=validation_loader,
-            validation_frequency=validation_frequency,
+            eval_step=eval_step_,
+            eval_loader=eval_loader,
+            eval_frequency=eval_frequency,
             desc=f"Epoch {i}",
         )
 
