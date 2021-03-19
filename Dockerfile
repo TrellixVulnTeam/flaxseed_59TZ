@@ -1,4 +1,4 @@
-FROM fkodom/flax:0.3.0-cuda11.1
+FROM fkodom/flax:0.3.0-cuda10.2
 
 RUN mkdir /app
 WORKDIR /app
