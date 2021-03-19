@@ -1,4 +1,4 @@
-flax==0.3.0
+flax
 jax
 jaxlib
 mlflow

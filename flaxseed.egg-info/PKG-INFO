@@ -1,0 +1,23 @@
+Metadata-Version: 2.1
+Name: flaxseed
+Version: 0.1.0a0
+Summary: Library for training deep learning models with Jax/Flax.
+Home-page: https://github.com/fkodom/flaxseed
+Author: Frank Odom
+Author-email: frank.odom.iii@gmail.com
+License: UNKNOWN
+Description: # Flaxseed
+        
+        Training library build on top of Flax, making it easier to train deep learning models with Jax. Because Flax is great, but doesn't take things far enough.
+        
+        **Note:** This is a personal repo, which may have breaking changes from time to time.  Use at your own risk. 
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires: flax
+Requires: jax
+Requires: jaxlib
+Requires: mlflow
+Requires: tqdm
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown

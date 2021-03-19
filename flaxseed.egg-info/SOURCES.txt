@@ -1,0 +1,8 @@
+README.md
+setup.py
+flaxseed/__init__.py
+flaxseed/core.py
+flaxseed.egg-info/PKG-INFO
+flaxseed.egg-info/SOURCES.txt
+flaxseed.egg-info/dependency_links.txt
+flaxseed.egg-info/top_level.txt
