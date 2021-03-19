@@ -194,6 +194,9 @@ class FlaxseedModule(nn.Module):
 
     @property
     def optimizer(self):
+        if not hasattr(self, "_optimizer"):
+            self._optimizer = None
+            
         if self._optimizer is None:
             params = self.init_params(self._random_key)
             self._optimizer = self.init_optimizer(params)
