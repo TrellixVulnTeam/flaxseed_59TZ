@@ -1,2 +1,2 @@
-from flaxseed.core import train, test, FlaxseedModule
+from flaxseed.core import FlaxseedModule
 from flaxseed import callbacks, logging, utils

@@ -123,10 +123,14 @@ def _make_step_fn_differentiable(step_fn: Callable):
 
 
 class FlaxseedModule(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self._random_key = random.PRNGKey(0)
-        self._optimizer = None
+    from flax.core.scope import Scope
+
+    _scope = Scope(
+        name="flaxseed",
+        mutable=True,
+        variables={"optimizer": None},
+        rngs={"main": random.PRNGKey(0)},
+    )
 
     @abstractmethod
     def init_params(self, key: np.ndarray) -> Dict[str, np.ndarray]:
@@ -138,23 +142,22 @@ class FlaxseedModule(nn.Module):
 
     @property
     def random_key(self):
-        if not hasattr(self, "_random_key"):
-            self._random_key = random.PRNGKey(0)
-        return self._random_key
+        return self._scope.rngs["main"]
+
+    def set_random_key(self, value):
+        self._scope.rngs["main"] = value
 
     @property
     def optimizer(self):
-        if not hasattr(self, "_optimizer"):
-            self._optimizer = None
+        optimizer_ = self._scope.get_variable("flaxseed", "optimizer")
+        if optimizer_ is None:
+            optimizer_ = self.init_optimizer(self.init_params(self.random_key))
+            self._scope.put_variable("flaxseed", "optimizer", optimizer_)
 
-        if self._optimizer is None:
-            params = self.init_params(self.random_key)
-            self._optimizer = self.init_optimizer(params)
-        return self._optimizer
+        return optimizer_
 
-    @optimizer.setter
-    def optimizer(self, value):
-        self._optimizer = value
+    def set_optimizer(self, value):
+        self._scope.put_variable("flaxseed", "optimizer", value)
 
     @property
     def params(self):
@@ -201,7 +204,7 @@ class FlaxseedModule(nn.Module):
         eval_step_ = jax.pmap(self.eval_step)
 
         for i in range(1, max_epochs + 1):
-            self.optimizer, self._random_key = _training_epoch(
+            optimizer, random_key = _training_epoch(
                 self.optimizer,
                 random_key=self.random_key,
                 training_step=training_step_,
@@ -211,12 +214,15 @@ class FlaxseedModule(nn.Module):
                 eval_frequency=eval_frequency,
                 desc=f"Epoch {i}",
             )
+            self.set_optimizer(optimizer)
+            self.set_random_key(random_key)
 
     def test(self, test_loader: Sequence):
-        self._random_key = _test_epoch(
+        random_key = _test_epoch(
             self.params,
             random_key=self.random_key,
             test_step=jax.pmap(self.eval_step),
             test_loader=test_loader,
             desc="Test",
         )
+        self.set_random_key(random_key)
