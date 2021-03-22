@@ -122,62 +122,6 @@ def _make_step_fn_differentiable(step_fn: Callable):
     return _differentiable_fn
 
 
-def train(
-    optimizer: optim.Optimizer,
-    training_step: Callable,
-    training_loader: Sequence,
-    eval_step: Callable = lambda *x: None,
-    eval_loader: Sequence = (),
-    random_key: np.ndarray = random.PRNGKey(0),
-    max_epochs: int = 5,
-    eval_frequency: int = 1,
-):
-    @partial(jax.pmap, axis_name="batch")
-    def training_step_(
-        optimizer: optim.Optimizer,
-        batch: Sequence[np.ndarray],
-        random_key: np.ndarray,
-    ) -> Tuple[Dict[str, np.ndarray], optim.Optimizer]:
-        step_fn = _make_step_fn_differentiable(training_step)
-        step_fn = partial(step_fn, batch=batch, random_key=random_key)
-        (_, metrics), grad = jax.value_and_grad(step_fn, has_aux=True)(optimizer.target)
-        optimizer = optimizer.apply_gradient(lax.pmean(grad, axis_name="batch"))
-        return metrics, optimizer
-
-    eval_step_ = jax.pmap(eval_step)
-
-    for i in range(1, max_epochs + 1):
-        optimizer, random_key = _training_epoch(
-            optimizer,
-            random_key=random_key,
-            training_step=training_step_,
-            training_loader=training_loader,
-            eval_step=eval_step_,
-            eval_loader=eval_loader,
-            eval_frequency=eval_frequency,
-            desc=f"Epoch {i}",
-        )
-
-    return optimizer, random_key
-
-
-def test(
-    optimizer: optim.Optimizer,
-    test_step: Callable,
-    test_loader: Sequence,
-    random_key: np.ndarray = random.PRNGKey(0),
-):
-    random_key = _test_epoch(
-        optimizer.target,
-        random_key=random_key,
-        test_step=jax.pmap(test_step),
-        test_loader=test_loader,
-        desc="Test",
-    )
-
-    return random_key
-
-
 class FlaxseedModule(nn.Module):
     def __init__(self):
         super().__init__()
@@ -270,7 +214,7 @@ class FlaxseedModule(nn.Module):
 
     def test(self, test_loader: Sequence):
         self._random_key = _test_epoch(
-            self.optimizer.target,
+            self.params,
             random_key=self.random_key,
             test_step=jax.pmap(self.eval_step),
             test_loader=test_loader,
