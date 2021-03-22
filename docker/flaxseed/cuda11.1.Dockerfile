@@ -1,18 +1,9 @@
-FROM nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04
+FROM fkodom/flax:0.3.2-cuda11.1
 
-ENV XLA_FLAGS=--xla_gpu_cuda_data_dir=/usr/local/cuda-11.1
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
 
-RUN apt-get update
-RUN apt-get install -y wget
-
-ENV PATH="/root/miniconda3/bin:${PATH}"
-ARG PATH="/root/miniconda3/bin:${PATH}"
-RUN wget \
-    https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
-    && mkdir /root/.conda \
-    && bash Miniconda3-latest-Linux-x86_64.sh -b \
-    && rm -f Miniconda3-latest-Linux-x86_64.sh 
-
-RUN python -m pip install --upgrade pip \
-    && python -m pip install --upgrade jax jaxlib==0.1.59+cuda110 -f https://storage.googleapis.com/jax-releases/jax_releases.html \
-    && pip install flax==0.3.0
+COPY flaxseed flaxseed/
+COPY setup.py ./
+COPY README.md ./
+RUN python setup.py install
