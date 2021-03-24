@@ -4,6 +4,7 @@ from typing import Any, Callable, Iterable, Dict, Tuple, Sequence, Union
 
 import flax.linen as nn
 from flax import optim, jax_utils
+from flax.core.scope import Scope
 import jax
 from jax import random, lax
 from jax import numpy as np
@@ -123,8 +124,6 @@ def _make_step_fn_differentiable(step_fn: Callable):
 
 
 class FlaxseedModule(nn.Module):
-    from flax.core.scope import Scope
-
     _scope = Scope(
         name="flaxseed",
         mutable=True,
@@ -162,6 +161,9 @@ class FlaxseedModule(nn.Module):
     @property
     def params(self):
         return self.optimizer.target
+
+    def transform(self, inputs):
+        return self.apply({"params": self.params}, inputs)
 
     @abstractmethod
     def training_step(
