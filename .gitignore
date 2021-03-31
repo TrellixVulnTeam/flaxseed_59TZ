@@ -4,5 +4,6 @@ __pycache__
 build/
 data/
 dist/
-mnist/
 *.egg-info
+*.params
+*.checkpoint

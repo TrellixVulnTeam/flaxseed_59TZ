@@ -1,9 +1,11 @@
 from abc import abstractmethod
 from functools import partial, wraps
+import os
 from typing import Any, Callable, Iterable, Dict, Tuple, Sequence, Union
 
 import flax.linen as nn
 from flax import optim, jax_utils
+from flax.serialization import to_bytes, from_bytes
 from flax.core.scope import Scope
 import jax
 from jax import random, lax
@@ -22,21 +24,18 @@ def _parallel_split(key: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     return key, subkey
 
 
-# def _load_checkpoint(path: str) -> Dict:
-#     with open(path, "rb") as f:
-#         context = f.read()
+def _save_as_bytes(path: str, obj: Any):
+    path = os.path.abspath(path)
+    folder = os.path.dirname(path)
+    os.makedirs(folder, exist_ok=True)
 
-#     optimizer = context["optimizer"]
-
-#     optimizer_def = checkpoint["optimizer_def"]
-#     target_bytes = checkpoint["target"]
-#     state_bytes = checkpoint["state"]
+    with open(path, "wb") as f:
+        f.write(to_bytes(obj))
 
 
-def _execute_callbacks(callbacks: Iterable, on: str, context: Dict[str, Any]):
-    callbacks_ = filter(lambda callback: on in callback.on, callbacks)
-    for callback in callbacks_:
-        callback(context)
+def _load_from_bytes(path: str, target: Any):
+    with open(path, "rb") as f:
+        return from_bytes(target, f.read())
 
 
 def _training_epoch(
@@ -127,8 +126,8 @@ class FlaxseedModule(nn.Module):
     _scope = Scope(
         name="flaxseed",
         mutable=True,
-        variables={"optimizer": None},
-        rngs={"main": random.PRNGKey(0)},
+        variables={"optimizer": None, "hparams": {}},
+        rngs={"main": random.PRNGKey(10)},
     )
 
     @abstractmethod
@@ -159,11 +158,51 @@ class FlaxseedModule(nn.Module):
         self._scope.put_variable("flaxseed", "optimizer", value)
 
     @property
+    def hparams(self):
+        return self._scope.get_variable("flaxseed", "hparams")
+
+    def set_hparams(self, value: Dict):
+        self._scope.put_variable("flaxseed", "hparams", value)
+
+    @property
     def params(self):
         return self.optimizer.target
 
+    def set_params(self, value: Dict[str, np.ndarray]):
+        opt = self.optimizer
+        breakpoint()
+        opt["params"]
+
     def transform(self, inputs):
         return self.apply({"params": self.params}, inputs)
+
+    def _get_checkpoint(self):
+        return {
+            "hparams": self.hparams,
+            "optimizer": self.optimizer,
+        }
+
+    def save_checkpoint(self, path: str):
+        _save_as_bytes(path, self._get_checkpoint())
+
+    def load_checkpoint(self, path: str):
+        checkpoint = _load_from_bytes(path, self._get_checkpoint())
+        self.set_hparams(checkpoint["hparams"])
+        self.set_optimizer(checkpoint["optimizer"])
+
+    def save_optimizer(self, path: str):
+        _save_as_bytes(path, self.optimizer)
+
+    def load_optimizer(self, path: str):
+        self.set_optimizer(_load_from_bytes(path, self.optimizer))
+
+    def save_params(self, path: str):
+        _save_as_bytes(path, self.params)
+
+    def load_params(self, path: str):
+        state_dict = self.optimizer.state_dict()
+        state_dict["target"] = _load_from_bytes(path, self.params)
+        self.set_optimizer(self.optimizer.restore_state(state_dict))
 
     @abstractmethod
     def training_step(

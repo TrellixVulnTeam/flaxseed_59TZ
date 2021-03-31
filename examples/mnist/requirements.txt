@@ -1,6 +1,5 @@
-flax
+flax==0.3.2
 jax
 jaxlib
 mlflow
-pydantic
 tqdm
