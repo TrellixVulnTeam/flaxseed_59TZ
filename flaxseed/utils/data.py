@@ -2,9 +2,10 @@ from abc import ABC
 from concurrent.futures import ProcessPoolExecutor
 import os
 import random
-from typing import Iterable, Sequence, Callable, Optional
+from typing import Any, Iterable, Sequence, Callable, Optional, Tuple
 
 import jax.numpy as np
+import numpy as onp
 
 
 class Dataset(ABC):
@@ -13,12 +14,12 @@ class Dataset(ABC):
         root: str,
         transform: Callable = None,
         target_transform: Callable = None,
-        **kwargs
+        **kwargs,
     ):
         self.root = root
         self.transform = transform
         self.target_transform = target_transform
-        self.max_workers = 2 ** 20
+        self.max_workers = 2**20
 
     def __len__(self):
         """Computes the length of the dataset (total number of samples)."""
@@ -155,7 +156,7 @@ class DataLoader(Sequence):
         shuffle: bool = False,
         drop_last: bool = False,
         max_workers: int = 0,
-        collate_fn: Callable = None,
+        collate_fn: Optional[Callable[[Tuple[Any, ...]], Any]] = None,
     ):
         self.dataset = dataset
         self.batch_size = batch_size
@@ -208,7 +209,7 @@ def default_collate(batch):
     r"""Puts each data field into a tensor with outer dimension batch size"""
 
     elem = batch[0]
-    if isinstance(elem, (np.ndarray, float, int)):
+    if isinstance(elem, (np.ndarray, onp.ndarray, float, int)):
         return np.array(batch)
     elif isinstance(elem, dict):
         return {key: default_collate([d[key] for d in batch]) for key in elem}
