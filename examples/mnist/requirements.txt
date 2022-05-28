@@ -1,5 +1,4 @@
-flax==0.3.2
+flax
 jax
 jaxlib
-mlflow
 tqdm

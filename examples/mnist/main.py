@@ -5,8 +5,8 @@ import jax
 import jax.numpy as np
 import optax
 from flax.jax_utils import replicate, unreplicate
+from flax.training.common_utils import get_metrics, onehot, shard
 from flax.training.train_state import TrainState
-from flax.training.common_utils import onehot, shard, get_metrics
 from jax import random
 from tqdm import tqdm
 

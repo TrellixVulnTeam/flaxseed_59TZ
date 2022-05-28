@@ -1,4 +1,0 @@
-flax
-jax
-jaxlib
-tqdm
