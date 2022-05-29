@@ -1,8 +1,9 @@
-from abc import ABC
-from concurrent.futures import ProcessPoolExecutor
 import os
 import random
-from typing import Any, Iterable, Sequence, Callable, Optional, Tuple
+import sys
+from abc import ABC
+from concurrent.futures import ProcessPoolExecutor
+from typing import Any, Callable, Iterable, Optional, Sequence, Tuple
 
 import jax.numpy as np
 import numpy as onp
@@ -19,7 +20,6 @@ class Dataset(ABC):
         self.root = root
         self.transform = transform
         self.target_transform = target_transform
-        self.max_workers = 2**20
 
     def __len__(self):
         """Computes the length of the dataset (total number of samples)."""
@@ -92,7 +92,6 @@ class Subset(Dataset):
     def __init__(self, dataset: Dataset, indices: Iterable[int]):
         self._superset = dataset
         self.indices = list(indices)
-        self.max_workers = dataset.max_workers
 
     def __len__(self):
         return len(self.indices)
@@ -106,7 +105,6 @@ class Concatenate(Dataset):
         self._subsets = tuple(datasets)
         self._start_indices = ()
         self._len = -1
-        self.max_workers = min(d.max_workers for d in datasets)
 
     def __len__(self):
         if self._len < 0:
@@ -162,7 +160,7 @@ class DataLoader(Sequence):
         self.batch_size = batch_size
         self._shuffle = shuffle
         self.drop_last = drop_last
-        self.max_workers = min(max_workers, dataset.max_workers)
+        self.max_workers = max_workers
         self.collate_fn = collate_fn if collate_fn else default_collate
 
         self._batch_idx = 0

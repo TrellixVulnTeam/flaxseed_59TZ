@@ -9,7 +9,6 @@ import numpy as np
 from flaxseed.utils.data import Dataset
 from flaxseed.utils.download import download_url
 
-
 __all__ = ["MNIST", "FashionMNIST", "KMNIST"]
 
 
@@ -56,7 +55,6 @@ class MNIST(Dataset):
         self.folder = os.path.join(self.root, "MNIST")
         self.training_file = os.path.join(self.folder, "training.pkl.gz")
         self.test_file = os.path.join(self.folder, "test.pkl.gz")
-        self.max_workers = 0
 
         if download:
             self.download()
@@ -188,7 +186,7 @@ class KMNIST(MNIST):
 
 def open_maybe_compressed_file(path):
     """Return a file object that possibly decompresses 'path' on the fly.
-       Decompression occurs when argument `path` is a string and ends with '.gz'.
+    Decompression occurs when argument `path` is a string and ends with '.gz'.
     """
     if path.endswith(".gz"):
         return gzip.open(path, "rb")
@@ -198,7 +196,7 @@ def open_maybe_compressed_file(path):
 
 def read_ubyte(path):
     """Read a SN3 file in "Pascal Vincent" format (Lush file 'libidx/idx-io.lsh').
-       Argument may be a filename, compressed filename, or file object.
+    Argument may be a filename, compressed filename, or file object.
     """
 
     with open_maybe_compressed_file(path) as f:
